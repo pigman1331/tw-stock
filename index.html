@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>營收股價透視</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f3f5f4; --panel:#ffffff; --ink:#15212b; --muted:#5d6b73; --line:#dde3e1; --grid:#e8ecea;
+  --price:#0e5a86; --rev:#d49a35; --psr:#6b3f8f; --band:#9aa7ad;
+  --up:#c8352e; --down:#1f8a4c; --focus:#0e5a86;
+  --st1:#e8b92a; --st2:#e2733a; --st3:#4c84c4; --st4:#9aa7ad;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#10161b; --panel:#172027; --ink:#e4eaed; --muted:#93a2aa; --line:#27333b; --grid:#222c33;
+    --price:#5fb2e3; --rev:#e0ac4f; --psr:#b98ade; --band:#6d7c84;
+    --up:#ef6a61; --down:#4cc27e; --focus:#5fb2e3;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#10161b; --panel:#172027; --ink:#e4eaed; --muted:#93a2aa; --line:#27333b; --grid:#222c33;
+  --price:#5fb2e3; --rev:#e0ac4f; --psr:#b98ade; --band:#6d7c84;
+  --up:#ef6a61; --down:#4cc27e; --focus:#5fb2e3;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:18px}
+.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{margin:0;font-size:22px;font-weight:700;letter-spacing:.02em}
+h1 small{display:block;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:0}
+form{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input,select,button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 10px}
+input#code{width:9.5em}
+input#token{width:11em}
+button{cursor:pointer;background:var(--price);color:#fff;border-color:var(--price);font-weight:500}
+:is(input,select,button,.seg label):focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--panel)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{padding:6px 12px;cursor:pointer;color:var(--muted);font-size:14px}
+.seg input:checked+label{background:var(--ink);color:var(--bg)}
+.seg input:focus-visible+label{outline:2px solid var(--focus);outline-offset:-2px}
+.status{font-size:14px;color:var(--muted);min-height:1.6em}
+.status.err{color:var(--up)}
+.stock{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+.stock .name{font-size:26px;font-weight:700}
+.stock .meta{color:var(--muted);font-size:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.tile{background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.tile .k{font-size:12px;color:var(--muted);letter-spacing:.06em}
+.tile .v{font-size:22px;font-weight:500}
+.tile .s{font-size:13px;color:var(--muted)}
+.up{color:var(--up)} .down{color:var(--down)}
+section.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 14px 10px}
+.phead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.phead h2{margin:0;font-size:16px;font-weight:700}
+.phead p{margin:0;font-size:13px;color:var(--muted)}
+.chart{position:relative;height:360px}
+.chart.sm{height:220px}
+.tablebox{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;white-space:nowrap}
+th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:500;color:var(--muted);font-size:13px}
+.note{font-size:13px;color:var(--muted);max-width:70ch}
+.stagebox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px}
+.stagebox .now{display:flex;flex-direction:column;gap:4px;padding-left:12px;border-left:6px solid var(--stc,var(--line))}
+.stagebox .now b{font-size:20px}
+.stagebox .now span{font-size:14px;color:var(--muted)}
+.stagebox ul{margin:0;padding-left:1.1em;font-size:14px;display:flex;flex-direction:column;gap:3px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-2px;margin-right:4px}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:var(--stc);color:var(--ink)}
+@media (max-width:640px){.stagebox{grid-template-columns:1fr}}
+@media (max-width:560px){.chart{height:260px}.stock .name{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>營收股價透視<small>台股月營收・季營收・股價・股價營收比（P/S）</small></h1>
+    <form id="f">
+      <input id="code" placeholder="代號或名稱，如 2330" value="2330" autocomplete="off" aria-label="股票代號或名稱">
+      <select id="range" aria-label="期間">
+        <option value="3">近 3 年</option>
+        <option value="5" selected>近 5 年</option>
+        <option value="10">近 10 年</option>
+      </select>
+      <span class="seg" role="radiogroup" aria-label="營收頻率">
+        <input type="radio" name="freq" id="fm" value="m" checked><label for="fm">月</label>
+        <input type="radio" name="freq" id="fq" value="q"><label for="fq">季</label>
+      </span>
+      <input id="token" type="password" placeholder="FinMind token（選填）" aria-label="FinMind token（選填）">
+      <button type="submit">查詢</button>
+    </form>
+  </header>
+
+  <div id="status" class="status" role="status"></div>
+
+  <div id="result" hidden>
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <div class="stock"><span class="name" id="sName"></span><span class="meta" id="sMeta"></span></div>
+      <div class="tiles" id="tiles"></div>
+      <div class="stagebox" id="stageBox"></div>
+
+      <section class="panel">
+        <div class="phead"><h2 id="t1">月營收・股價・P/S</h2><p>長條：營收（億元，左軸）　實線：期末收盤價　虛線：P/S　底色：階段　▲ 賣夢訊號　▼ P/S 回落訊號　◆ 營收增速腰斬</p></div>
+        <div class="chart"><canvas id="c1"></canvas></div>
+      </section>
+
+      <section class="panel">
+        <div class="phead"><h2 id="t2">營收年增率</h2><p>與去年同期相比（%）</p></div>
+        <div class="chart sm"><canvas id="c2"></canvas></div>
+      </section>
+
+      <section class="panel">
+        <div class="phead"><h2>股價營收比 P/S</h2><p>期末市值 ÷ 近 12 個月營收　虛線：區間平均與 ±1 標準差</p></div>
+        <div class="chart"><canvas id="c3"></canvas></div>
+      </section>
+
+      <section class="panel">
+        <div class="phead"><h2 id="t4">明細</h2><p>最新在上</p></div>
+        <div class="tablebox"><table id="tbl"></table></div>
+      </section>
+
+      <p class="note">階段與訊號規則：▲ 賣夢訊號＝股價半年漲逾 50%、P/S 超過自身 5 年中位數 1.5 倍、近 3 月營收年增低於 20%；▼ P/S 回落訊號＝P/S 從 12 個月高點回落逾 25%，但近 3 月營收年增仍逾 20%；◆ 營收增速腰斬＝近 3 月營收年增跌到半年內高點的一半以下。規則來自 46 檔台股題材股回測，在一般電子股上 ▲ 訊號並無優勢，只適合用在你已判斷題材是真的個股。</p>
+      <p class="note">資料來源：FinMind 開放資料（台灣證交所、櫃買中心、公開資訊觀測站）。P/S = 期末收盤價 × 發行股數 ÷ 近 12 個月營收；月營收於次月 10 日前公布，因此歷史 P/S 在期末當下其實還看不到當月營收。股價未做除權息還原。未帶 token 每小時約可查 100 檔，可到 finmindtrade.com 免費註冊取得 token 提高上限。</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+const LOCAL = /^https?:$/.test(location.protocol) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const API = LOCAL ? '/finmind' : 'https://api.finmindtrade.com/api/v4/data';
+const $ = s => document.querySelector(s);
+const pad = n => String(n).padStart(2, '0');
+const E8 = 1e8;
+let infoCache = null, dataCache = {}, charts = [], current = null;
+
+try { const t = localStorage.getItem('finmind_token'); if (t) $('#token').value = t; } catch (e) {}
+
+function setStatus(msg, err) { const s = $('#status'); s.textContent = msg || ''; s.classList.toggle('err', !!err); }
+
+async function fm(dataset, params) {
+  const q = new URLSearchParams({ dataset, ...params });
+  const tk = $('#token').value.trim();
+  if (tk) q.set('token', tk);
+  let r;
+  try { r = await fetch(API + '?' + q); }
+  catch (e) {
+    if (location.protocol === 'file:') throw new Error('直接雙擊 HTML 開啟時，資料來源會拒絕連線。請改為雙擊同一資料夾裡的 start.bat 開啟。');
+    if (LOCAL) throw new Error('連不到本機服務，請確認 start.bat 的黑色視窗還開著。');
+    throw new Error('連不到資料來源（' + e.message + '），請確認網路或改用 start.bat 開啟。');
+  }
+  let j; try { j = await r.json(); } catch (e) { throw new Error('資料來源回應異常（HTTP ' + r.status + '）'); }
+  if (r.status !== 200 || j.msg !== 'success') {
+    const m = (j && j.msg) || ('HTTP ' + r.status);
+    if (/upper limit/i.test(m) || r.status === 402) throw new Error('已達 FinMind 查詢上限，請稍後再試或填入 token。');
+    throw new Error('資料來源錯誤：' + m);
+  }
+  return j.data || [];
+}
+
+async function getInfo() {
+  if (infoCache) return infoCache;
+  const rows = await fm('TaiwanStockInfo', {});
+  const map = new Map();
+  for (const r of rows) if (!map.has(r.stock_id)) map.set(r.stock_id, r);
+  infoCache = map; return map;
+}
+
+async function resolve(input) {
+  const info = await getInfo();
+  const s = input.trim();
+  if (info.has(s)) return info.get(s);
+  const hit = [...info.values()].find(r => r.stock_name === s) || [...info.values()].find(r => r.stock_name.includes(s));
+  if (hit) return hit;
+  throw new Error('找不到「' + s + '」，請確認代號或名稱。');
+}
+
+async function load(id) {
+  if (dataCache[id]) return dataCache[id];
+  const d = new Date(); d.setFullYear(d.getFullYear() - 11);
+  const start = d.toISOString().slice(0, 10);
+  const [price, rev, sh] = await Promise.all([
+    fm('TaiwanStockPrice', { data_id: id, start_date: start }),
+    fm('TaiwanStockMonthRevenue', { data_id: id, start_date: start }),
+    fm('TaiwanStockShareholding', { data_id: id, start_date: start }).catch(() => [])
+  ]);
+  return (dataCache[id] = { price, rev, sh });
+}
+
+function stageOf(x) {
+  if (x.psr == null || x.yoy3 == null) return 0;
+  if (x.psDraw != null && x.psDraw <= -0.25 && x.yoy3 > 0) return 3;
+  if (x.yoy3 >= 20 && x.r6 != null && x.r6 > 0) return 2;
+  if (x.r6 != null && x.r6 > 0.3 && x.yoy3 < 20 && x.psRel != null && x.psRel > 1.3) return 1;
+  return 4;
+}
+const STAGE = {
+  0: ['資料不足', '需要至少 2 年營收與股價資料'],
+  1: ['階段 1　賣夢期', '股價半年漲逾 30%，營收還沒跟上，P/S 高於自身 5 年中位數'],
+  2: ['階段 2　營收兌現', '近 3 月營收年增逾 20%，股價仍在上漲'],
+  3: ['階段 3　估值收斂', 'P/S 從 12 個月高點回落逾 25%，但營收仍在成長'],
+  4: ['階段 4　基本面', '股價跟營收同步，沒有明顯題材溢價']
+};
+
+function build(raw) {
+  // 月底收盤
+  const close = new Map(); let lastPrice = null;
+  for (const p of raw.price.slice().sort((a, b) => a.date < b.date ? -1 : 1)) {
+    if (p.close > 0) { close.set(p.date.slice(0, 7), p.close); lastPrice = p; }
+  }
+  // 發行股數
+  const shares = new Map(); let lastShares = null;
+  for (const s of raw.sh.slice().sort((a, b) => a.date < b.date ? -1 : 1)) {
+    if (s.NumberOfSharesIssued > 0) { shares.set(s.date.slice(0, 7), s.NumberOfSharesIssued); lastShares = s.NumberOfSharesIssued; }
+  }
+  const shareKeys = [...shares.keys()].sort();
+  const sharesAt = k => {
+    let v = null;
+    for (const sk of shareKeys) { if (sk <= k) v = shares.get(sk); else break; }
+    return v ?? (shareKeys.length ? shares.get(shareKeys[0]) : null);
+  };
+  // 月營收
+  const revMap = new Map();
+  for (const r of raw.rev) revMap.set(r.revenue_year + '-' + pad(r.revenue_month), r.revenue);
+  const keys = [...revMap.keys()].sort();
+  const prevKey = (k, n) => { let [y, m] = k.split('-').map(Number); m -= n; while (m <= 0) { m += 12; y--; } return y + '-' + pad(m); };
+  const months = keys.map(k => {
+    const rev = revMap.get(k);
+    const ly = revMap.get(prevKey(k, 12));
+    let ttm = 0, ok = true;
+    for (let i = 0; i < 12; i++) { const v = revMap.get(prevKey(k, i)); if (v == null) { ok = false; break; } ttm += v; }
+    const c = close.get(k) ?? null, sh = sharesAt(k);
+    const mcap = c != null && sh ? c * sh : null;
+    return { key: k, label: k, rev, yoy: ly ? (rev / ly - 1) * 100 : null, ttm: ok ? ttm : null, close: c, mcap, psr: ok && mcap ? mcap / ttm : null };
+  });
+  // 階段與訊號（依 46 檔題材股回測的規則）
+  const medOf = a => { a = a.slice().sort((x, y) => x - y); return a[Math.floor(a.length / 2)]; };
+  months.forEach((x, i) => {
+    const g = j => months[i - j];
+    const r3 = [0, 1, 2].map(j => revMap.get(prevKey(x.key, j))), r3ly = [12, 13, 14].map(j => revMap.get(prevKey(x.key, j)));
+    x.yoy3 = r3.every(v => v != null) && r3ly.every(v => v > 0) ? (r3.reduce((a, b) => a + b) / r3ly.reduce((a, b) => a + b) - 1) * 100 : null;
+    x.r6 = g(6) && g(6).mcap && x.mcap ? x.mcap / g(6).mcap - 1 : null;
+    const hist = months.slice(Math.max(0, i - 60), i).map(z => z.psr).filter(z => z != null);
+    x.psRel = hist.length >= 24 && x.psr ? x.psr / medOf(hist) : null;
+    const psMax = Math.max(0, ...months.slice(Math.max(0, i - 12), i + 1).map(z => z.psr || 0));
+    x.psDraw = x.psr && psMax ? x.psr / psMax - 1 : null;
+    x.y3max6 = Math.max(-999, ...[0, 1, 2, 3, 4, 5].map(j => g(j) && g(j).yoy3 != null ? g(j).yoy3 : -999));
+    x.stage = stageOf(x);
+    x.sigIn = x.r6 > 0.5 && x.psRel > 1.5 && x.yoy3 != null && x.yoy3 < 20;
+    x.sigOut = x.psDraw != null && x.psDraw < -0.25 && x.yoy3 > 20 && !(i > 0 && months[i - 1].sigOut);
+    x.sigSlow = x.y3max6 > 30 && x.yoy3 != null && x.yoy3 < 0.5 * x.y3max6 && !(i > 0 && months[i - 1].sigSlow);
+  });
+  // 季
+  const qMap = new Map();
+  for (const m of months) {
+    const [y, mo] = m.key.split('-').map(Number); const q = Math.ceil(mo / 3); const qk = y + 'Q' + q;
+    if (!qMap.has(qk)) qMap.set(qk, { key: qk, y, q, parts: [] });
+    qMap.get(qk).parts.push(m);
+  }
+  const quarters = [];
+  for (const g of qMap.values()) {
+    if (g.parts.length !== 3) continue;
+    const endM = g.parts.reduce((a, b) => a.key > b.key ? a : b);
+    quarters.push({ key: g.key, label: g.key, rev: g.parts.reduce((s, p) => s + p.rev, 0), close: endM.close, mcap: endM.mcap, ttm: endM.ttm, psr: endM.psr, yoy3: endM.yoy3, stage: endM.stage,
+      sigIn: g.parts.some(p => p.sigIn), sigOut: g.parts.some(p => p.sigOut), sigSlow: g.parts.some(p => p.sigSlow) });
+  }
+  quarters.sort((a, b) => a.key < b.key ? -1 : 1);
+  const qIdx = new Map(quarters.map(q => [q.key, q]));
+  for (const q of quarters) { const ly = qIdx.get((q.key.slice(0, 4) - 1) + q.key.slice(4)); q.yoy = ly ? (q.rev / ly.rev - 1) * 100 : null; }
+  return { months, quarters, lastPrice, lastShares };
+}
+
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmtY = v => v == null ? '—' : (v / E8).toLocaleString('zh-TW', { maximumFractionDigits: v / E8 >= 100 ? 0 : 1 });
+const fmtN = (v, d = 2) => v == null ? '—' : v.toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtP = v => v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + '%';
+const cls = v => v == null ? '' : v >= 0 ? 'up' : 'down';
+
+function stats(arr) {
+  const v = arr.filter(x => x != null);
+  if (!v.length) return null;
+  const mean = v.reduce((a, b) => a + b, 0) / v.length;
+  const sd = Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / v.length);
+  return { mean, sd, min: Math.min(...v), max: Math.max(...v), vals: v };
+}
+
+function render() {
+  if (!current) return;
+  const { info, model } = current;
+  const years = +$('#range').value;
+  const freq = document.querySelector('input[name=freq]:checked').value;
+  const cut = new Date(); cut.setFullYear(cut.getFullYear() - years);
+  const cutKey = cut.toISOString().slice(0, 7);
+  const rowsM = model.months.filter(m => m.key >= cutKey);
+  const rows = freq === 'm' ? rowsM : model.quarters.filter(q => q.key >= cutKey.slice(0, 4) + 'Q' + Math.ceil(+cutKey.slice(5) / 3));
+  const word = freq === 'm' ? '月' : '季';
+
+  $('#sName').textContent = info.stock_id + ' ' + info.stock_name;
+  $('#sMeta').textContent = [info.industry_category, info.type === 'twse' ? '上市' : info.type === 'tpex' ? '上櫃' : info.type].filter(Boolean).join('・');
+  $('#t1').textContent = word + '營收・股價・P/S';
+  $('#t2').textContent = word + '營收年增率';
+  $('#t4').textContent = word + '度明細';
+
+  // 摘要
+  const lm = model.months[model.months.length - 1];
+  const lp = model.lastPrice;
+  const nowPsr = lp && model.lastShares && lm && lm.ttm ? lp.close * model.lastShares / lm.ttm : null;
+  const ps = stats(rowsM.map(m => m.psr));
+  let pct = null;
+  if (ps && nowPsr != null) pct = ps.vals.filter(v => v <= nowPsr).length / ps.vals.length * 100;
+  const tiles = [
+    ['最新收盤', lp ? fmtN(lp.close, lp.close < 100 ? 2 : 0) : '—', lp ? lp.date : ''],
+    ['最新月營收（億）', lm ? fmtY(lm.rev) : '—', lm ? lm.key + '　年增 <span class="' + cls(lm.yoy) + '">' + fmtP(lm.yoy) + '</span>' : ''],
+    ['近 12 月營收（億）', lm ? fmtY(lm.ttm) : '—', '至 ' + (lm ? lm.key : '')],
+    ['市值（億）', lp && model.lastShares ? fmtY(lp.close * model.lastShares) : '—', model.lastShares ? '股數 ' + (model.lastShares / 1e4).toLocaleString('zh-TW', { maximumFractionDigits: 0 }) + ' 萬股' : '無股數資料'],
+    ['目前 P/S', nowPsr != null ? fmtN(nowPsr) + ' 倍' : '—', ps ? '區間 ' + fmtN(ps.min) + '–' + fmtN(ps.max) + '　均 ' + fmtN(ps.mean) : ''],
+    ['P/S 歷史位置', pct != null ? pct.toFixed(0) + '%' : '—', pct != null ? '近 ' + years + ' 年中比 ' + pct.toFixed(0) + '% 的月份貴' : '']
+  ];
+  $('#tiles').innerHTML = tiles.map(t => '<div class="tile"><span class="k">' + t[0] + '</span><span class="v num">' + t[1] + '</span><span class="s num">' + t[2] + '</span></div>').join('');
+
+  // 階段
+  const stC = s => s >= 1 && s <= 4 ? css('--st' + s) : css('--line');
+  const recent = model.months.slice(-6);
+  const sigs = [];
+  for (const m of recent) {
+    if (m.sigIn) sigs.push(m.key + '　▲ 賣夢訊號：股價半年漲 ' + Math.round(m.r6 * 100) + '%，營收年增僅 ' + Math.round(m.yoy3) + '%');
+    if (m.sigOut) sigs.push(m.key + '　▼ P/S 回落訊號：P/S 距 12 月高點 ' + Math.round(m.psDraw * 100) + '%，營收年增仍 ' + Math.round(m.yoy3) + '%');
+    if (m.sigSlow) sigs.push(m.key + '　◆ 營收增速腰斬：近 3 月年增 ' + Math.round(m.yoy3) + '%，半年內高點 ' + Math.round(m.y3max6) + '%');
+  }
+  const st = lm ? lm.stage : 0;
+  $('#stageBox').innerHTML =
+    '<div class="now" style="--stc:' + stC(st) + '"><span>' + (lm ? lm.key + ' 營收資料判定' : '') + '</span><b>' + STAGE[st][0] + '</b><span>' + STAGE[st][1] + '</span>' +
+    '<span class="num">近3月營收年增 ' + fmtP(lm && lm.yoy3) + '　股價半年 ' + (lm && lm.r6 != null ? fmtP(lm.r6 * 100) : '—') + '　P/S 距 12 月高點 ' + (lm && lm.psDraw != null ? fmtP(lm.psDraw * 100) : '—') + '</span></div>' +
+    '<div><b style="font-size:14px">近 6 個月訊號</b><ul>' + (sigs.length ? sigs.map(s => '<li class="num">' + s + '</li>').join('') : '<li>無</li>') + '</ul>' +
+    '<div class="legend">' + [1, 2, 3, 4].map(s => '<span><i style="background:' + stC(s) + '"></i>' + STAGE[s][0].replace(/　/, ' ') + '</span>').join('') + '</div></div>';
+
+  // 圖
+  charts.forEach(c => c.destroy()); charts = [];
+  Chart.defaults.font.family = '"IBM Plex Mono","Noto Sans TC",monospace';
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = css('--muted');
+  const grid = { color: css('--grid') };
+  const labels = rows.map(r => r.label);
+  const common = {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { labels: { boxWidth: 12, color: css('--ink'), font: { family: '"Noto Sans TC",sans-serif', size: 12 } } } },
+    scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } } }
+  };
+
+  const hexA = (h, a) => { h = h.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); const n = parseInt(h, 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')'; };
+  const shade = { id: 'stageShade', beforeDatasetsDraw(ch) {
+    const xs = ch.scales.x, a = ch.chartArea, c = ch.ctx; if (!xs) return;
+    const w = rows.length > 1 ? Math.abs(xs.getPixelForValue(1) - xs.getPixelForValue(0)) : a.right - a.left;
+    c.save();
+    rows.forEach((r, i) => { if (!r.stage || r.stage === 4) return; c.fillStyle = hexA(css('--st' + r.stage), .16);
+      const x = xs.getPixelForValue(i); c.fillRect(Math.max(a.left, x - w / 2), a.top, Math.min(w, a.right - x + w / 2), a.bottom - a.top); });
+    c.restore(); } };
+  const mark = (key, lab, color, rot, style) => ({ type: 'line', label: lab, data: rows.map(r => r[key] ? r.close : null), yAxisID: 'yp', showLine: false,
+    pointStyle: style, rotation: rot, pointRadius: 7, pointHoverRadius: 8, pointBackgroundColor: color, pointBorderColor: css('--panel'), pointBorderWidth: 1, order: -1 });
+
+  charts.push(new Chart($('#c1'), {
+    type: 'bar',
+    plugins: [shade],
+    data: { labels, datasets: [
+      mark('sigIn', '▲ 賣夢訊號', css('--up'), 0, 'triangle'),
+      mark('sigOut', '▼ P/S 回落', css('--down'), 180, 'triangle'),
+      mark('sigSlow', '◆ 增速腰斬', css('--st3'), 45, 'rect'),
+      { type: 'line', label: '收盤價', data: rows.map(r => r.close), yAxisID: 'yp', borderColor: css('--price'), backgroundColor: css('--price'), borderWidth: 2, pointRadius: 0, tension: .15, order: 0 },
+      { type: 'line', label: 'P/S（倍）', data: rows.map(r => r.psr), yAxisID: 'ys', borderColor: css('--psr'), backgroundColor: css('--psr'), borderWidth: 2, borderDash: [5, 3], pointRadius: 0, tension: .15, order: 0 },
+      { type: 'bar', label: word + '營收（億）', data: rows.map(r => r.rev / E8), yAxisID: 'yr', backgroundColor: css('--rev'), borderRadius: 2, order: 1 }
+    ] },
+    options: { ...common, scales: { ...common.scales,
+      yr: { position: 'left', grid, beginAtZero: true, title: { display: true, text: '營收 億元' } },
+      yp: { position: 'right', grid: { display: false }, title: { display: true, text: '股價 元', color: css('--price') }, ticks: { color: css('--price') } },
+      ys: { position: 'right', grid: { display: false }, title: { display: true, text: 'P/S 倍', color: css('--psr') }, ticks: { color: css('--psr'), callback: v => v + 'x' } } },
+      plugins: { ...common.plugins, tooltip: { filter: i => i.raw != null && !/訊號|回落|腰斬/.test(i.dataset.label), callbacks: {
+        label: c => c.dataset.label + '：' + c.raw.toLocaleString('zh-TW', { maximumFractionDigits: c.dataset.yAxisID === 'ys' ? 2 : 1 }),
+        afterBody: its => { const r = rows[its[0].dataIndex]; const s = [STAGE[r.stage || 0][0]]; if (r.sigIn) s.push('▲ 賣夢訊號'); if (r.sigOut) s.push('▼ P/S 回落訊號'); if (r.sigSlow) s.push('◆ 營收增速腰斬'); return s; } } } } }
+  }));
+
+  const up = css('--up'), down = css('--down');
+  charts.push(new Chart($('#c2'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: '年增率 %', data: rows.map(r => r.yoy), backgroundColor: rows.map(r => (r.yoy ?? 0) >= 0 ? up : down), borderRadius: 2 }] },
+    options: { ...common, plugins: { ...common.plugins, legend: { display: false }, tooltip: { callbacks: { label: c => '年增率：' + fmtP(c.raw) } } },
+      scales: { ...common.scales, y: { grid, ticks: { callback: v => v + '%' } } } }
+  }));
+
+  const pRows = rows.map(r => r.psr);
+  const band = css('--band');
+  const flat = (v, lab, dash) => ({ type: 'line', label: lab, data: rows.map(() => v), borderColor: band, borderDash: dash, borderWidth: 1, pointRadius: 0 });
+  const pstat = stats(pRows);
+  const ds3 = [{ type: 'line', label: 'P/S（倍）', data: pRows, borderColor: css('--psr'), backgroundColor: css('--psr') + '22', fill: true, borderWidth: 2, pointRadius: 0, tension: .15 }];
+  if (pstat) ds3.push(flat(pstat.mean, '平均 ' + fmtN(pstat.mean), [6, 4]), flat(pstat.mean + pstat.sd, '+1σ ' + fmtN(pstat.mean + pstat.sd), [2, 4]), flat(Math.max(0, pstat.mean - pstat.sd), '−1σ ' + fmtN(Math.max(0, pstat.mean - pstat.sd)), [2, 4]));
+  charts.push(new Chart($('#c3'), {
+    type: 'line',
+    data: { labels, datasets: ds3 },
+    options: { ...common, scales: { ...common.scales, y: { grid, ticks: { callback: v => v + 'x' } } },
+      plugins: { ...common.plugins, tooltip: { filter: i => i.datasetIndex === 0, callbacks: { label: c => 'P/S：' + fmtN(c.raw) + ' 倍' } } } }
+  }));
+
+  // 表
+  const head = '<thead><tr><th>期間</th><th>營收（億）</th><th>年增率</th><th>近3月年增</th><th>期末收盤</th><th>市值（億）</th><th>近12月營收（億）</th><th>P/S</th><th>階段</th><th>訊號</th></tr></thead>';
+  const body = rows.slice().reverse().slice(0, freq === 'm' ? 36 : 20).map(r =>
+    '<tr><td class="num">' + r.label + '</td><td class="num">' + fmtY(r.rev) + '</td><td class="num ' + cls(r.yoy) + '">' + fmtP(r.yoy) +
+    '</td><td class="num ' + cls(r.yoy3) + '">' + fmtP(r.yoy3) +
+    '</td><td class="num">' + (r.close == null ? '—' : fmtN(r.close, r.close < 100 ? 2 : 0)) + '</td><td class="num">' + fmtY(r.mcap) +
+    '</td><td class="num">' + fmtY(r.ttm) + '</td><td class="num">' + (r.psr == null ? '—' : fmtN(r.psr)) +
+    '</td><td>' + (r.stage ? '<span class="pill" style="--stc:' + hexA(stC(r.stage), .3) + '">' + r.stage + '</span>' : '—') +
+    '</td><td>' + [r.sigIn ? '▲' : '', r.sigOut ? '▼' : '', r.sigSlow ? '◆' : ''].join('') + '</td></tr>').join('');
+  $('#tbl').innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+async function run() {
+  const q = $('#code').value;
+  if (!q.trim()) return;
+  try { const t = $('#token').value.trim(); t ? localStorage.setItem('finmind_token', t) : localStorage.removeItem('finmind_token'); } catch (e) {}
+  setStatus('查詢中…');
+  try {
+    const info = await resolve(q);
+    const raw = await load(info.stock_id);
+    if (!raw.rev.length) throw new Error(info.stock_id + ' ' + info.stock_name + ' 沒有月營收資料（ETF 或非一般公司不適用）。');
+    const model = build(raw);
+    current = { info, model };
+    $('#result').hidden = false;
+    render();
+    setStatus(model.lastShares ? '' : '查不到發行股數，P/S 無法計算。');
+  } catch (e) {
+    setStatus(e.message || String(e), true);
+  }
+}
+
+$('#f').addEventListener('submit', e => { e.preventDefault(); run(); });
+$('#range').addEventListener('change', render);
+document.querySelectorAll('input[name=freq]').forEach(r => r.addEventListener('change', render));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+run();
+})();
+</script>
+</body>
+</html>
